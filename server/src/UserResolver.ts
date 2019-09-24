@@ -6,11 +6,14 @@ import { createRefreshToken, createAccessToken } from "./Auth";
 import { isAuth } from "./isAuth";
 import { sendRefreshToken } from "./SendRefreshToken";
 import { getConnection } from "typeorm";
+import { verify } from "jsonwebtoken";
 
 @ObjectType()
 class LoginResponse {
     @Field()
     accessToken: string;
+    @Field(() => User)
+    user: User;
 }
 
 @Resolver()
@@ -18,6 +21,27 @@ export class UserResolver {
     @Query(() => String)
     hello() {
         return "hi";
+    }
+
+    @Query(() => User, { nullable: true })
+    me(
+        @Ctx() context: MyContext
+    ) {
+        const authorization = context.req.headers["authorization"];
+
+        if (!authorization) {
+            return null;
+        }
+
+        try {
+            const token = authorization.split(" ")[1];
+            const payload: any = verify(token, process.env.ACCESS_TOKEN_SECRET!);
+
+            return User.findOne(payload.userId);
+        } catch (err) {
+            console.log(err);
+            return null;
+        }
     }
 
     @Query(() => String)
@@ -32,6 +56,15 @@ export class UserResolver {
     @Query(() => [User])
     async users() {
         return User.find();
+    }
+
+    @Mutation(() => Boolean)
+    async logout(
+        @Ctx() { res }: MyContext
+    ) {
+        sendRefreshToken(res, "");
+
+        return true;
     }
 
     @Mutation(() => Boolean)
@@ -64,7 +97,8 @@ export class UserResolver {
         sendRefreshToken(res, createRefreshToken(user));
 
         return {
-            accessToken: createAccessToken(user)
+            accessToken: createAccessToken(user),
+            user
         };
     }
 
